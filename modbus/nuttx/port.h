@@ -84,7 +84,7 @@ void vMBPortLog(eMBPortLogLevel eLevel, const char *szModule,
                 const char *szFmt, ...) printf_like(3, 4);
 void vMBPortTimerPoll(void);
 bool xMBPortSerialPoll(void);
-bool xMBPortSerialSetTimeout(uint32_t dwTimeoutMs);
+bool xMBPortSerialSetTimeout(uint32_t dwTimeoutUs);
 
 #if defined(CONFIG_MB_RTU_MASTER) || defined(CONFIG_MB_ASCII_MASTER)
   void vMBMasterPortEnterCritical(void);

@@ -69,8 +69,9 @@
 static int      iSerialFd = -1;
 static bool     bRxEnabled;
 static bool     bTxEnabled;
+static bool     bRxFrameNow = false;
 
-static uint32_t ulTimeoutMs;
+static uint32_t ulTimeoutUs;
 static uint8_t  ucBuffer[BUF_SIZE];
 static int      uiRxBufferPos;
 static int      uiTxBufferPos;
@@ -97,8 +98,29 @@ static bool prvbMBPortSerialRead(uint8_t *pucBuffer, uint16_t usNBytes,
   fd_set          rfds;
   struct timeval  tv;
 
-  tv.tv_sec = 0;
-  tv.tv_usec = 50000;
+  /* Reduce the timeout for select() when we are receiving a frame now.
+   * This allows to reduce the response time.
+   *
+   * ulTimeoutUs is the value of T3.5, this means that next frame
+   * character must be received before this time. We can reuse this value
+   * to update select() timeout when we are in the process of receiving
+   * frame characters.
+   *
+   * bRxFrameNow is set to true on the first received frame bit and is
+   * changed bach to false on the first failed read of the next byte.
+   */
+
+  if (!bRxFrameNow)
+    {
+      tv.tv_sec = 0;
+      tv.tv_usec = 50000;
+    }
+  else
+    {
+      tv.tv_sec = 0;
+      tv.tv_usec = ulTimeoutUs;
+    }
+
   FD_ZERO(&rfds);
   FD_SET(iSerialFd, &rfds);
 
@@ -110,6 +132,7 @@ static bool prvbMBPortSerialRead(uint8_t *pucBuffer, uint16_t usNBytes,
     {
       if (select(iSerialFd + 1, &rfds, NULL, NULL, &tv) == -1)
         {
+          bRxFrameNow = false;
           if (errno != EINTR)
             {
               bResult = false;
@@ -119,16 +142,19 @@ static bool prvbMBPortSerialRead(uint8_t *pucBuffer, uint16_t usNBytes,
         {
           if ((res = read(iSerialFd, pucBuffer, usNBytes)) == -1)
             {
+              bRxFrameNow = false;
               bResult = false;
             }
           else
             {
+              bRxFrameNow = true;
               *usNBytesRead = (uint16_t)res;
               break;
             }
         }
       else
         {
+          bRxFrameNow = false;
           *usNBytesRead = 0;
           break;
         }
@@ -293,15 +319,15 @@ bool xMBPortSerialInit(uint8_t ucPort, speed_t ulBaudRate,
   return bStatus;
 }
 
-bool xMBPortSerialSetTimeout(uint32_t ulNewTimeoutMs)
+bool xMBPortSerialSetTimeout(uint32_t ulNewTimeoutUs)
 {
-  if (ulNewTimeoutMs > 0)
+  if (ulNewTimeoutUs > 0)
     {
-      ulTimeoutMs = ulNewTimeoutMs;
+      ulTimeoutUs = ulNewTimeoutUs;
     }
   else
     {
-      ulTimeoutMs = 1;
+      ulTimeoutUs = 1000;
     }
 
   return true;
